@@ -1,0 +1,3 @@
+FROM mariadb
+WORKDIR ./var/www
+COPY ./var/www/CreateTable.sql /docker-entrypoint-initdb.d

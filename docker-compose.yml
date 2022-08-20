@@ -1,0 +1,90 @@
+version: "3.9"
+
+networks:
+  super_network:
+    driver: bridge
+
+services:
+  rabbitmq:
+    image: 'rabbitmq:management'
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - ${RABBITMQ_PORT_QUEUE}:${RABBITMQ_PORT_QUEUE}
+      - ${RABBITMQ_PORT_UI}:${RABBITMQ_PORT_UI}
+    networks:
+      - super_network
+    env_file:
+      - .env
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - ${NGINX_PORT}:${NGINX_PORT}
+    # монтируем директории, слева директории на основной машине, справа - куда они монтируются в контейнере
+    volumes:
+      - ./etc/nginx/templates:/etc/nginx/conf.d
+      - ./var/www:/var/www
+      - ./logs:/var/log/nginx
+      - ./etc/supervisor/templates/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf
+    links:
+      - php
+      - rabbitmq
+      - mysql
+    networks:
+      - super_network
+    env_file:
+      - .env
+  php:
+    tty: true
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    # у нас свой образ для PHP, указываем путь к нему и говорим что его надо собрать
+    container_name: php
+    image: bitnami/php-fpm:latest
+    links:
+      - mysql
+      - rabbitmq
+    networks:
+      - super_network
+    volumes:
+      - ./var/www:/var/www
+      - ./etc/supervisor/templates/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf
+  mysql:
+    container_name: mysql
+    image: mariadb
+    build:
+      context: ./
+      dockerfile: Dockerfile-mysql
+    ports:
+      - ${MYSQL_PORT}:${MYSQL_PORT}
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_USERNAME=${MYSQL_USER}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    networks:
+      - super_network
+    env_file:
+      - .env
+  phpmyadmin:
+    container_name: phpmyadmin
+    image: phpmyadmin
+    restart: always
+    ports:
+      - 8080:80
+    environment:
+      - PMA_ARBITRARY=1
+      - MYSQL_HOST=mysql
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    links:
+      - mysql
+    networks:
+      - super_network
+    env_file:
+      - .env
